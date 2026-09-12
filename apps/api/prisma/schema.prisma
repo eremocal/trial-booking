@@ -1,0 +1,136 @@
+// Trial class booking — data model
+//
+// Two invariants are enforced by the DATABASE, not by application code.
+// Prisma's schema language cannot express either one, so both live in
+// plain SQL in migrations/20260912133900_invariants/migration.sql:
+//
+//   1. At most one CONFIRMED booking per (student, trial_class)
+//      -> partial unique index
+//   2. confirmed_count never exceeds capacity
+//      -> CHECK constraint
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Parent {
+  id        String    @id @default(uuid())
+  email     String    @unique
+  name      String
+  createdAt DateTime  @default(now()) @map("created_at")
+  students  Student[]
+
+  @@map("parents")
+}
+
+model Student {
+  id        String    @id @default(uuid())
+  parentId  String    @map("parent_id")
+  name      String
+  birthYear Int?      @map("birth_year")
+  createdAt DateTime  @default(now()) @map("created_at")
+  parent    Parent    @relation(fields: [parentId], references: [id], onDelete: Cascade)
+  bookings  Booking[]
+
+  @@index([parentId])
+  @@map("students")
+}
+
+model TrialClass {
+  id      String   @id @default(uuid())
+  subject String // "math" | "science"
+  title   String
+  startsAt DateTime @map("starts_at")
+
+  /// Hard cap, stored per class rather than as a constant.
+  capacity Int @default(4)
+
+  /// Price in cents. Integer, never a float.
+  priceCents Int @default(1500) @map("price_cents")
+
+  /// Denormalised count of CONFIRMED bookings, updated in the same transaction
+  /// that confirms or cancels a booking and guarded by a CHECK constraint.
+  confirmedCount Int @default(0) @map("confirmed_count")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  bookings  Booking[]
+
+  @@index([startsAt])
+  @@map("trial_classes")
+}
+
+enum BookingStatus {
+  /// Created, awaiting a payment result. Holds NO seat.
+  pending_payment
+
+  /// Terminal success. Occupies exactly one seat.
+  confirmed
+
+  /// Terminal. Payment was declined; no seat consumed; parent may retry.
+  payment_failed
+
+  /// Terminal. Payment SUCCEEDED but the last seat was taken first.
+  /// Refund is owed. This is the User-A outcome in the last-seat race.
+  seat_unavailable
+
+  /// Terminal. Cancelled by parent or admin; releases its seat.
+  cancelled
+}
+
+model Booking {
+  id           String     @id @default(uuid())
+  studentId    String     @map("student_id")
+  trialClassId String     @map("trial_class_id")
+
+  status BookingStatus @default(pending_payment)
+
+  createdAt   DateTime  @default(now()) @map("created_at")
+  confirmedAt DateTime? @map("confirmed_at")
+
+  /// Money was taken but no seat given (lost race or duplicate). Cleared once
+  /// the refund is issued.
+  refundOwed Boolean @default(false) @map("refund_owed")
+
+  student         Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  trialClass      TrialClass       @relation(fields: [trialClassId], references: [id], onDelete: Cascade)
+  paymentAttempts PaymentAttempt[]
+
+  @@index([trialClassId, status])
+  @@index([studentId])
+  @@map("bookings")
+}
+
+enum PaymentStatus {
+  succeeded
+  failed
+}
+
+model PaymentAttempt {
+  id        String @id @default(uuid())
+  bookingId String @map("booking_id")
+
+  status     PaymentStatus
+  amountCents Int          @map("amount_cents")
+
+  /// Mock gateway reference.
+  providerRef String @map("provider_ref")
+
+  /// Client-supplied. Unique, so a replayed payment request is a no-op rather
+  /// than a second charge or a second seat.
+  idempotencyKey String @unique @map("idempotency_key")
+
+  /// Decline reason from the mock gateway, when status = failed.
+  failureReason String? @map("failure_reason")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([bookingId])
+  @@map("payment_attempts")
+}
