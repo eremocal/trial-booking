@@ -1,0 +1,17 @@
+packages:
+  - "apps/*"
+
+# pnpm 11 blocks dependency build scripts unless explicitly allowed, and turns
+# an ignored build into a hard error. Prisma needs its query/schema engines,
+# esbuild and @swc/core need their platform binaries.
+#
+# Note: pnpm rewrites this block itself and inserts entries whose value is the
+# literal text "set this to true or false". Leaving one of those in place looks
+# harmless and silently blocks the build inside Docker while local installs keep
+# working from a cached approval.
+allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
+  prisma: true
+  esbuild: true
+  '@swc/core': true

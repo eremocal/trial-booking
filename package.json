@@ -1,0 +1,18 @@
+{
+  "name": "trial-class-booking",
+  "private": true,
+  "packageManager": "pnpm@11.5.2",
+  "scripts": {
+    "db:up": "docker compose up -d db",
+    "db:migrate": "pnpm --filter @trial-class-booking/api exec prisma migrate deploy",
+    "db:seed": "pnpm --filter @trial-class-booking/api run seed",
+    "test": "pnpm --filter @trial-class-booking/api run test",
+    "demo": "./scripts/demo.sh",
+    "api": "pnpm --filter @trial-class-booking/api start",
+    "web": "pnpm --filter @trial-class-booking/web dev",
+    "prove-the-lock": "./scripts/prove-the-lock.sh",
+    "typecheck": "pnpm --filter @trial-class-booking/api exec tsc --noEmit -p tsconfig.json && pnpm --filter @trial-class-booking/web exec tsc --noEmit -p tsconfig.json",
+    "stack:up": "docker compose up -d --build --wait",
+    "stack:down": "docker compose down"
+  }
+}
